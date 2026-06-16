@@ -20,7 +20,9 @@
         const statusDiv = document.getElementById("status");
 
         // ★自分のPCでテストするときは 'localhost'、公開時はサーバーのIPやURLに変更します
-        const ws = new WebSocket('ws://' + window.location.host);
+        // window.location.protocol が 'https:' のときは 'wss:' にする
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(protocol + '//' + window.location.host);
 
         let myRole = "";
         let gameState = null;
