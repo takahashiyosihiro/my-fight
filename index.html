@@ -87,7 +87,17 @@ const ws = new WebSocket(protocol + '//' + window.location.host);
         function drawPlayer(p, color) {
             ctx.fillStyle = p.isParrying ? "cyan" : color;
             ctx.fillRect(p.x, p.y, p.width, p.height);
+            // --- 足 ---
+            ctx.fillStyle = color;
+            // 体の下側に2本足を追加
+            ctx.fillRect(p.x + 5, p.y + p.height, 10, 15);  // 左足
+            ctx.fillRect(p.x + p.width - 15, p.y + p.height, 10, 15); // 右足
 
+            // --- 腕 ---
+            ctx.fillStyle = color;
+            // 体の横から少し突き出す
+            ctx.fillRect(p.x - 5, p.y + 10, 10, 20); // 左腕
+            ctx.fillRect(p.x + p.width - 5, p.y + 10, 10, 20); // 右腕
             // 目線
             ctx.fillStyle = "white";
             let eyeX = p.isFacingRight ? p.x + p.width - 15 : p.x + 5;
