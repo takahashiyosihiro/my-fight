@@ -4,99 +4,61 @@
     <meta charset="UTF-8">
     <title>Node Fighting Network Game</title>
     <style>
-        body { background: #222; text-align: center; color: white; font-family: Arial, sans-serif; }
-        canvas { background: black; border: 4px solid #444; display: block; margin: 20px auto; }
-        #status { font-size: 20px; color: orange; font-weight: bold; }
+        body { background: #222; text-align: center; color: white; font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        canvas { background: #000; border: 4px solid #444; display: block; margin: 0 auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        h1 { margin-bottom: 10px; }
     </style>
 </head>
 <body>
     <h1>NODE STREET FIGHTER</h1>
-    <div id="status">接続中...</div>
-    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <canvas id="c" width="800" height="400"></canvas>
+    <div id="msg" style="margin-top:10px; font-weight:bold; color:orange;">接続中...</div>
 
     <script>
-        const canvas = document.getElementById("gameCanvas");
+        const canvas = document.getElementById("c");
         const ctx = canvas.getContext("2d");
-        const statusDiv = document.getElementById("status");
-
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(protocol + '//' + window.location.host);
-
-        let myRole = "";
-        let gameState = null;
-
-        ws.onopen = () => { statusDiv.innerText = "接続完了！対戦相手を待っています..."; };
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'init') {
-                myRole = data.role;
-                statusDiv.innerText = `あなたは ${myRole === 'SERVER' ? 'Player 1 (青)' : 'Player 2 (緑)'} です！`;
-            }
-            if (data.type === 'state') {
-                gameState = data;
-                drawGame();
+        const msgDiv = document.getElementById("msg");
+        const ws = new WebSocket((window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host);
+        
+        let state = null;
+        ws.onmessage = (e) => {
+            state = JSON.parse(e.data);
+            if (state.type === 'init') {
+                msgDiv.innerText = `あなたは ${state.role === 'SERVER' ? 'Player 1' : 'Player 2'} です！`;
+            } else {
+                draw();
             }
         };
 
-        const activeKeys = { 'KeyA':'A', 'KeyD':'D', 'KeyW':'W', 'KeyS':'S', 'Space':'SPACE', 'KeyR':'R', 'KeyQ':'PARRY', 'ShiftLeft':'SHIFT' };
+        const keys = { 'KeyA':'A', 'KeyD':'D', 'KeyW':'W', 'KeyS':'S', 'Space':'SPACE', 'KeyR':'R', 'KeyQ':'PARRY', 'ShiftLeft':'SHIFT' };
+        window.onkeydown = (e) => { if(keys[e.code]) ws.send(JSON.stringify({type:'input', key:keys[e.code], isDown:true})); };
+        window.onkeyup = (e) => { if(keys[e.code]) ws.send(JSON.stringify({type:'input', key:keys[e.code], isDown:false})); };
         
-        window.addEventListener('keydown', (e) => {
-            if (activeKeys[e.code]) ws.send(JSON.stringify({ type: 'input', key: activeKeys[e.code], isDown: true }));
-        });
-        window.addEventListener('keyup', (e) => {
-            if (activeKeys[e.code]) ws.send(JSON.stringify({ type: 'input', key: activeKeys[e.code], isDown: false }));
-        });
+        function draw() {
+            ctx.clearRect(0, 0, 800, 400);
+            ctx.fillStyle = "#222"; ctx.fillRect(0, 350, 800, 50); // 床
 
-        function drawGame() {
-            if (!gameState) return;
-            const { p1, p2, matchMessage, isGameOver } = gameState;
+            [state.p1, state.p2].forEach((p, i) => {
+                // プレイヤー描画
+                ctx.fillStyle = p.isStunned ? "yellow" : (p.isParrying ? "cyan" : (i==0 ? "blue" : "green"));
+                ctx.fillRect(p.x, p.y, 50, 100);
+                
+                // 攻撃中エフェクト
+                if(p.isAttacking) { ctx.fillStyle="red"; ctx.fillRect(p.isFacingRight?p.x+50:p.x-40, p.y+20, 40, 20); }
+                // 弾
+                if(p.hasProjectile) { ctx.fillStyle=p.isStrongProj?"yellow":"cyan"; ctx.beginPath(); ctx.arc(p.projX+10, p.projY+10, p.isStrongProj?20:10, 0, 7); ctx.fill(); }
+            });
 
-            ctx.fillStyle = "black";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "rgb(60,60,60)";
-            ctx.fillRect(0, 350, canvas.width, 50);
-
-            drawPlayer(p1, "blue", p1.isStunned, p1.isParrying);
-            drawPlayer(p2, "green", p2.isStunned, p2.isParrying);
-            drawUI(p1, p2, matchMessage);
-
-            if (isGameOver) drawGameOverScreen(matchMessage);
-        }
-
-        function drawPlayer(p, color, isStunned, isParrying) {
-            ctx.fillStyle = isStunned ? "yellow" : (isParrying ? "cyan" : color);
-            ctx.fillRect(p.x, p.y, p.width, p.height);
-            // 簡易的な手足
-            ctx.fillStyle = color;
-            ctx.fillRect(p.x + 5, p.y + p.height, 10, 15); ctx.fillRect(p.x + p.width - 15, p.y + p.height, 10, 15);
-            ctx.fillRect(p.x - 5, p.y + 10, 10, 20); ctx.fillRect(p.x + p.width - 5, p.y + 10, 10, 20);
-            // 攻撃エフェクト
-            if (p.isAttacking) { ctx.fillStyle = "red"; ctx.fillRect(p.isFacingRight ? p.x + p.width : p.x - 40, p.y + 20, 40, 20); }
-            // 飛び道具
-            if (p.hasProjectile) { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.arc(p.projX + 10, p.projY + 10, 10, 0, Math.PI * 2); ctx.fill(); }
-        }
-
-        function drawUI(p1, p2, msg) {
-            // HPバー
-            ctx.fillStyle = "rgb(80,80,80)"; ctx.fillRect(50, 30, 200, 20); ctx.fillRect(550, 30, 200, 20);
-            ctx.fillStyle = "red"; ctx.fillRect(50, 30, p1.hp * 2, 20); ctx.fillRect(550, 30, p2.hp * 2, 20);
-            // ダッシュゲージ
-            ctx.fillStyle = "white"; ctx.fillRect(50, 60, 100, 10); ctx.fillRect(650, 60, 100, 10);
-            ctx.fillStyle = "cyan"; ctx.fillRect(50, 60, p1.dashGauge, 10); ctx.fillRect(650, 60, p2.dashGauge, 10);
-            // コンボ表示
-            ctx.font = "20px Impact"; ctx.fillStyle = "orange";
-            if (p1.comboCount > 1) ctx.fillText(p1.comboCount + " HIT!", 50, 90);
-            if (p2.comboCount > 1) ctx.fillText(p2.comboCount + " HIT!", 680, 90);
-            // 中央メッセージ
-            ctx.font = "bold 28px Arial"; ctx.fillStyle = "white"; ctx.textAlign = "center";
-            ctx.fillText(msg, 400, 50);
-        }
-
-        function drawGameOverScreen(msg) {
-            ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,800,400);
-            ctx.fillStyle = "red"; ctx.font = "64px Impact"; ctx.fillText("GAME OVER", 400, 180);
-            ctx.fillStyle = "white"; ctx.font = "24px Arial"; ctx.fillText(msg, 400, 240);
-            ctx.fillStyle = "orange"; ctx.fillText("PRESS [ R ] TO RESTART", 400, 280);
+            // UI描画
+            ctx.fillStyle="red"; ctx.fillRect(50, 30, state.p1.hp*2, 20); ctx.fillRect(550, 30, state.p2.hp*2, 20);
+            ctx.fillStyle="cyan"; ctx.fillRect(50, 60, state.p1.dashGauge, 10); ctx.fillRect(650, 60, state.p2.dashGauge, 10);
+            
+            ctx.font="20px Impact"; ctx.fillStyle="orange";
+            if(state.p1.comboCount>1) ctx.fillText(state.p1.comboCount+" HIT!", 50, 90);
+            if(state.p2.comboCount>1) ctx.fillText(state.p2.comboCount+" HIT!", 680, 90);
+            
+            ctx.fillStyle="white"; ctx.font="bold 28px Arial"; ctx.fillText(state.matchMessage, 400, 50);
+            if(state.isGameOver) { ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.fillRect(0,0,800,400); ctx.fillText("PRESS [ R ] TO RESTART", 400, 200); }
         }
     </script>
 </body>
