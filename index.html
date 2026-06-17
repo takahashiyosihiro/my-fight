@@ -19,20 +19,14 @@
         const ctx = canvas.getContext("2d");
         const statusDiv = document.getElementById("status");
 
-        // ★自分のPCでテストするときは 'localhost'、公開時はサーバーのIPやURLに変更します
-        // window.location.protocol が 'https:' のときは 'wss:' にする
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(protocol + '//' + window.location.host);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(protocol + '//' + window.location.host);
 
         let myRole = "";
         let gameState = null;
 
-        ws.onopen = () => { statusDiv.innerText = "サーバーに接続しました。相手を待っています..."; };
-        ws.onerror = () => { statusDiv.innerText = "接続エラーが発生しました。"; };
-        ws.onclose = () => { statusDiv.innerText = "サーバーから切断されました。"; };
-
+        ws.onopen = () => { statusDiv.innerText = "サーバーに接続しました。"; };
         ws.onmessage = (event) => {
-            // ⭕ タイポを修正しました
             const data = JSON.parse(event.data);
             if (data.type === 'init') {
                 myRole = data.role;
@@ -44,126 +38,63 @@ const ws = new WebSocket(protocol + '//' + window.location.host);
             }
         };
 
-        // キーボード操作をサーバーに送信 (W, A, S, D, SPACE, R)
-        const activeKeys = { 'KeyA': 'A', 'KeyD': 'D', 'KeyW': 'W', 'KeyS': 'S', 'Space': 'SPACE', 'KeyR': 'R','KeyQ': 'PARRY' };
+        const activeKeys = { 'KeyA':'A', 'KeyD':'D', 'KeyW':'W', 'KeyS':'S', 'Space':'SPACE', 'KeyR':'R', 'KeyQ':'PARRY', 'ShiftLeft':'SHIFT' };
         
         window.addEventListener('keydown', (e) => {
-            if (activeKeys[e.code]) {
-                ws.send(JSON.stringify({ type: 'input', key: activeKeys[e.code], isDown: true }));
-            }
+            if (activeKeys[e.code]) ws.send(JSON.stringify({ type: 'input', key: activeKeys[e.code], isDown: true }));
         });
         window.addEventListener('keyup', (e) => {
-            if (activeKeys[e.code]) {
-                ws.send(JSON.stringify({ type: 'input', key: activeKeys[e.code], isDown: false }));
-            }
+            if (activeKeys[e.code]) ws.send(JSON.stringify({ type: 'input', key: activeKeys[e.code], isDown: false }));
         });
 
         function drawGame() {
             if (!gameState) return;
-            // ⭕ サーバーから送られてきた isGameOver をここでしっかり受け取るように修正しました
             const { p1, p2, matchMessage, isGameOver } = gameState;
 
-            // 画面クリア
             ctx.fillStyle = "black";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 地面
             ctx.fillStyle = "rgb(60,60,60)";
             ctx.fillRect(0, 350, canvas.width, 50);
 
-            // キャラクター描画
-            drawPlayer(p1, "blue");
-            drawPlayer(p2, "green");
-
-            // UI描画
+            drawPlayer(p1, "blue", p1.isStunned);
+            drawPlayer(p2, "green", p2.isStunned);
             drawUI(p1, p2, matchMessage);
 
-            // ★ゲームオーバーなら画面を暗転させてリトライを促す
-            if (isGameOver) {
-                drawGameOverScreen(matchMessage);
-            }
+            if (isGameOver) drawGameOverScreen(matchMessage);
         }
 
-        function drawPlayer(p, color) {
-            ctx.fillStyle = p.isParrying ? "cyan" : color;
+        function drawPlayer(p, color, isStunned) {
+            ctx.fillStyle = isStunned ? "yellow" : (p.isParrying ? "cyan" : color);
             ctx.fillRect(p.x, p.y, p.width, p.height);
-            // --- 足 ---
+            // 簡易的な足と腕
             ctx.fillStyle = color;
-            // 体の下側に2本足を追加
-            ctx.fillRect(p.x + 5, p.y + p.height, 10, 15);  // 左足
-            ctx.fillRect(p.x + p.width - 15, p.y + p.height, 10, 15); // 右足
-
-            // --- 腕 ---
-            ctx.fillStyle = color;
-            // 体の横から少し突き出す
-            ctx.fillRect(p.x - 5, p.y + 10, 10, 20); // 左腕
-            ctx.fillRect(p.x + p.width - 5, p.y + 10, 10, 20); // 右腕
-            // 目線
+            ctx.fillRect(p.x + 5, p.y + p.height, 10, 15); ctx.fillRect(p.x + p.width - 15, p.y + p.height, 10, 15);
+            ctx.fillRect(p.x - 5, p.y + 10, 10, 20); ctx.fillRect(p.x + p.width - 5, p.y + 10, 10, 20);
             ctx.fillStyle = "white";
             let eyeX = p.isFacingRight ? p.x + p.width - 15 : p.x + 5;
             ctx.fillRect(eyeX, p.y + 15, 10, 10);
-
-            // パンチ
-            if (p.isAttacking) {
-                ctx.fillStyle = "red";
-                let punchX = p.isFacingRight ? p.x + p.width : p.x - 40;
-                ctx.fillRect(punchX, p.y + 20, 40, 20);
-            }
-
-            // 波動拳
-            if (p.hasProjectile) {
-                ctx.fillStyle = "cyan";
-                ctx.beginPath();
-                ctx.arc(p.projX + 10, p.projY + 10, 10, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            if (p.isAttacking) { ctx.fillStyle = "red"; ctx.fillRect(p.isFacingRight ? p.x + p.width : p.x - 40, p.y + 20, 40, 20); }
+            if (p.hasProjectile) { ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.arc(p.projX + 10, p.projY + 10, 10, 0, Math.PI * 2); ctx.fill(); }
         }
 
         function drawUI(p1, p2, msg) {
-            // P1 HPバー
-            ctx.fillStyle = "rgb(80,80,80)"; ctx.fillRect(50, 30, 200, 20);
-            ctx.fillStyle = "yellow"; ctx.fillRect(50, 30, p1.displayHp * 2, 20);
+            // HPバー
             ctx.fillStyle = "red"; ctx.fillRect(50, 30, p1.hp * 2, 20);
-
-            // P2 HPバー
-            ctx.fillStyle = "rgb(80,80,80)"; ctx.fillRect(550, 30, 200, 20);
-            ctx.fillStyle = "yellow"; ctx.fillRect(550, 30, p2.displayHp * 2, 20);
-            ctx.fillStyle = "red"; ctx.fillRect(550, 30, p2.hp * 2, 20);
-
-            // コンボ
-            ctx.font = "20px Impact"; ctx.fillStyle = "orange";
-            if (p1.comboCount > 1) ctx.fillText(p1.comboCount + " HIT!", 50, 80);
-            if (p2.comboCount > 1) ctx.fillText(p2.comboCount + " HIT!", 680, 80);
-
-            // 中央メッセージ
-            ctx.font = "bold 28px Arial"; ctx.fillStyle = "white";
-            ctx.textAlign = "center";
+            ctx.fillRect(550, 30, p2.hp * 2, 20);
+            // ダッシュゲージ
+            ctx.fillStyle = "white"; ctx.fillRect(50, 60, 100, 10);
+            ctx.fillStyle = "cyan"; ctx.fillRect(50, 60, p1.dashGauge, 10);
+            ctx.fillStyle = "white"; ctx.fillRect(650, 60, 100, 10);
+            ctx.fillStyle = "cyan"; ctx.fillRect(650, 60, p2.dashGauge, 10);
+            // メッセージ
+            ctx.font = "bold 28px Arial"; ctx.fillStyle = "white"; ctx.textAlign = "center";
             ctx.fillText(msg, 400, 50);
-            ctx.textAlign = "start"; // リセット
         }
 
-        // ★ゲームオーバー画面のデザイン
-        function drawGameOverScreen(winnerText) {
-            // 画面全体を半透明の黒で覆う（暗転）
-            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 「GAME OVER」の文字
-            ctx.font = "italic bold 64px Impact";
-            ctx.fillStyle = "red";
-            ctx.textAlign = "center";
-            ctx.fillText("GAME OVER", 400, 160);
-
-            // どっちが勝ったか
-            ctx.font = "bold 24px Arial";
-            ctx.fillStyle = "white";
-            ctx.fillText(winnerText, 400, 220);
-
-            // リトライの案内
-            ctx.font = "20px Arial";
-            ctx.fillStyle = "orange";
-            ctx.fillText("PRESS [ R ] TO RETRY", 400, 280);
-            ctx.textAlign = "start"; // 基準を元に戻す
+        function drawGameOverScreen(msg) {
+            ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(0,0,800,400);
+            ctx.fillStyle = "red"; ctx.font = "64px Impact"; ctx.fillText("GAME OVER", 400, 200);
+            ctx.fillStyle = "white"; ctx.font = "24px Arial"; ctx.fillText(msg + " (PRESS R)", 400, 260);
         }
     </script>
 </body>
