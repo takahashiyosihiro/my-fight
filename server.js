@@ -1,12 +1,14 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const path = require('path');
 const app = express();
+
 app.use(express.static(__dirname));
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server: server });
 
-// --- ゲームロジック（そのまま貼り付け）---
+// --- ゲームロジック ---
 const WIDTH = 800;
 const HEIGHT = 400;
 const GROUND_Y = 350;
@@ -64,7 +66,6 @@ function checkCollisions() {
             if (p2.isParrying) { p1.vx = p1.isFacingRight ? -15 : 15; matchMessage = "P2 PARRIED!"; } else { applyDamageToP2(10, p1.isFacingRight ? 18 : -18); }
         }
     }
-    // ... (省略: 残りの判定ロジックもここに入れる)
 }
 
 function applyDamageToP1(dmg, knockback) { p1.hp = Math.max(0, p1.hp - dmg); p1.vx = knockback; p2.comboCount++; p2.comboTimer = 45; if (p1.hp <= 0) { matchMessage = "PLAYER 2 WINS!"; isGameOver = true; } }
@@ -85,14 +86,11 @@ setInterval(() => {
 
 function resetGame() { p1 = createPlayer(150, 250); p2 = createPlayer(550, 250); matchMessage = "READY... FIGHT!"; isGameOver = false; }
 
-// server.listen(80); // これを削除して、下のように変える
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`サーバー起動: ポート ${PORT}`));
-// --- 修正箇所：ここを追加してください ---
-const path = require('path');
+// --- サーバー起動設定（ここだけで起動します） ---
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// ポート8000で強制的に起動する
-server.listen(8000, () => console.log('Server is running on port 8000'));
+server.listen(8000, () => {
+    console.log('サーバー起動: ポート 8000');
+});
