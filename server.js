@@ -17,21 +17,24 @@ let p1 = createPlayer(150, 250);
 let p2 = createPlayer(550, 250);
 let matchMessage = "READY... FIGHT!";
 let isGameOver = false;
-let clients = [];
+let connectedClients = [null, null]; // スロット管理 [p1, p2]
 
 function createPlayer(x, y) {
     return { x, y, width: 50, height: 100, hp: 100, maxHp: 100, displayHp: 100, vx: 0, vy: 0, isGrounded: true, isFacingRight: true, isAttacking: false, attackTimer: 0, comboCount: 0, comboTimer: 0, hasProjectile: false, projX: 0, projY: 0, projVx: 0, keyLeft: false, keyRight: false, isParrying: false, parryTimer: 0 };
 }
 
 wss.on('connection', (ws) => {
-    clients.push(ws);
-    const role = clients.length === 1 ? 'SERVER' : 'CLIENT';
+    let slot = connectedClients.findIndex(c => c === null);
+    if (slot === -1) { ws.close(); return; }
+
+    connectedClients[slot] = ws;
+    const role = (slot === 0) ? 'SERVER' : 'CLIENT';
     ws.send(JSON.stringify({ type: 'init', role: role }));
 
     ws.on('message', (message) => {
         const data = JSON.parse(message);
         if (data.type === 'input') {
-            const player = role === 'SERVER' ? p1 : p2;
+            const player = (slot === 0) ? p1 : p2;
             if (isGameOver && data.key === 'R' && data.isDown) { resetGame(); return; }
             if (isGameOver) return;
             if (data.key === 'A') player.keyLeft = data.isDown;
@@ -44,7 +47,7 @@ wss.on('connection', (ws) => {
             }
         }
     });
-    ws.on('close', () => { clients = clients.filter(c => c !== ws); });
+    ws.on('close', () => { connectedClients[slot] = null; });
 });
 
 function updatePlayer(p) {
@@ -61,9 +64,16 @@ function updatePlayer(p) {
 }
 
 function checkCollisions() {
+    // p1 attack p2
     if (p1.isAttacking && p1.attackTimer === 1) {
         if ((p1.isFacingRight && p1.x+p1.width+40 >= p2.x && p1.x+p1.width <= p2.x+p2.width) || (!p1.isFacingRight && p1.x-40 <= p2.x+p2.width && p1.x >= p2.x)) {
             if (p2.isParrying) { p1.vx = p1.isFacingRight ? -15 : 15; matchMessage = "P2 PARRIED!"; } else { applyDamageToP2(10, p1.isFacingRight ? 18 : -18); }
+        }
+    }
+    // p2 attack p1
+    if (p2.isAttacking && p2.attackTimer === 1) {
+        if ((p2.isFacingRight && p2.x+p2.width+40 >= p1.x && p2.x+p2.width <= p1.x+p1.width) || (!p2.isFacingRight && p2.x-40 <= p1.x+p1.width && p2.x >= p1.x)) {
+            if (p1.isParrying) { p2.vx = p2.isFacingRight ? -15 : 15; matchMessage = "P1 PARRIED!"; } else { applyDamageToP1(10, p2.isFacingRight ? -18 : 18); }
         }
     }
 }
@@ -73,24 +83,16 @@ function applyDamageToP2(dmg, knockback) { p2.hp = Math.max(0, p2.hp - dmg); p2.
 
 function broadcastState() {
     const state = JSON.stringify({ type: 'state', p1, p2, matchMessage, isGameOver });
-    clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(state); });
+    connectedClients.forEach(client => { if (client && client.readyState === WebSocket.OPEN) client.send(state); });
 }
 
 setInterval(() => {
-    if (clients.length === 2) {
-        p1.isFacingRight = (p1.x < p2.x); p2.isFacingRight = (p2.x <= p1.x);
-        updatePlayer(p1); updatePlayer(p2); checkCollisions();
-    }
+    p1.isFacingRight = (p1.x < p2.x); p2.isFacingRight = (p2.x <= p1.x);
+    updatePlayer(p1); updatePlayer(p2); checkCollisions();
     broadcastState();
 }, 16);
 
 function resetGame() { p1 = createPlayer(150, 250); p2 = createPlayer(550, 250); matchMessage = "READY... FIGHT!"; isGameOver = false; }
 
-// --- サーバー起動設定（ここだけで起動します） ---
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-server.listen(8000, () => {
-    console.log('サーバー起動: ポート 8000');
-});
+app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
+server.listen(8000, () => { console.log('サーバー起動: ポート 8000'); });
