@@ -88,3 +88,11 @@ function resetGame() { p1 = createPlayer(150, 250); p2 = createPlayer(550, 250);
 // server.listen(80); // これを削除して、下のように変える
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`サーバー起動: ポート ${PORT}`));
+// --- 修正箇所：ここを追加してください ---
+const path = require('path');
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// ポート8000で強制的に起動する
+server.listen(8000, () => console.log('Server is running on port 8000'));
